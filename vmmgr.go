@@ -1,59 +1,17 @@
-package main
+package vmmgr
+
 import (
 	"context"
-	"flag"
 	"fmt"
 	compute "google.golang.org/api/compute/v1"
 	"google.golang.org/api/googleapi"
-	option "google.golang.org/api/option"
 	"path"
 	"time"
 
 	log "github.com/sirupsen/logrus"
-
-)
-var (
-	// Flags
-	tenantProject = flag.String("tenant_project", "", "The tenant project.")
-	zone          = flag.String("zone", "", "The instance zone.")
-	region        = flag.String("region", "", "The enterprise instance region.")
-	waitTime      = flag.Duration("wait_time",5*time.Minute,"Wait time for the cloud operation")
 )
 
-func main(){
-	ctx := context.Background()
-	flag.Parse()
-	// Print context logs to stdout.
-	if *zone == "" && *region == "" {
-		log.Fatalf("Please specify a valid zone or region\n")
-	}
-	computeService, err := compute.NewService(ctx, option.WithScopes(compute.CloudPlatformScope))
-	if err != nil {
-		fmt.Printf("Error while getting service, err: %v\n", err)
-	}
-	clusterZones := []string{}
-	if *zone != "" {
-		clusterZones = append(clusterZones, *zone)
-	} else {
-		if clusterZones, err = listZones(ctx, computeService, *tenantProject, *region); err != nil {
-			log.Fatalf(fmt.Sprintln(err))
-		}
-	}
-	fmt.Printf("zones are %v", clusterZones)
-	vms, err := listVMs(ctx,computeService,*tenantProject,*zone)
-	if err != nil {
-		log.Fatalf(fmt.Sprintln(err))
-	}
-	fmt.Println(vms)
-	for _, vm := range vms {
-		if err = StopVMs(ctx, computeService, *tenantProject, *zone, vm.Name ); err != nil {
-			log.Fatalf(fmt.Sprintln(err))
-		}
-	}
-}
-
-
-func listZones(ctx context.Context, gceSvc *compute.Service, tenantProject, region string) ([]string, error) {
+func ListZones(ctx context.Context, gceSvc *compute.Service, tenantProject, region string) ([]string, error) {
 	zoneFilter := fmt.Sprintf("name = %s-*", region)
 	// Fetch all zones in the target region.
 	zonesListCall := gceSvc.Zones.List(tenantProject).Filter(zoneFilter)
@@ -76,7 +34,7 @@ func listZones(ctx context.Context, gceSvc *compute.Service, tenantProject, regi
 	return zoneNameList, nil
 }
 
-func listVMs(ctx context.Context,gceSvc *compute.Service, tenantProject, zone string)( []*compute.Instance,error) {
+func ListVMs(ctx context.Context, gceSvc *compute.Service, tenantProject, zone string) ([]*compute.Instance, error) {
 	instancesListCall := gceSvc.Instances.List(tenantProject, zone)
 	pageToken := ""
 	var vmList []*compute.Instance
@@ -84,11 +42,11 @@ func listVMs(ctx context.Context,gceSvc *compute.Service, tenantProject, zone st
 		resp, err := instancesListCall.PageToken(pageToken).Do()
 		fmt.Println(resp)
 		if err != nil {
-			return nil,fmt.Errorf("Encountered error when listing instances: %v", err)
+			return nil, fmt.Errorf("Encountered error when listing instances: %v", err)
 		}
 		fmt.Printf("respone is %v \n", resp.Id)
-		for _,i := range resp.Items {
-			fmt.Printf("resp are %v",i.Name)
+		for _, i := range resp.Items {
+			fmt.Printf("resp are %v", i.Name)
 		}
 		vmList = append(vmList, resp.Items...)
 		if pageToken = resp.NextPageToken; pageToken == "" {
@@ -99,18 +57,27 @@ func listVMs(ctx context.Context,gceSvc *compute.Service, tenantProject, zone st
 	return vmList, nil
 }
 
-func StopVMs(ctx context.Context, gceSvc *compute.Service, tenantProject, zone, vmName string) error {
-	op, err := gceSvc.Instances.Stop(tenantProject,zone,vmName).Context(ctx).Do()
+func StopVMs(ctx context.Context, gceSvc *compute.Service, tenantProject, zone, vmName string, wait *time.Duration) error {
+	op, err := gceSvc.Instances.Stop(tenantProject, zone, vmName).Context(ctx).Do()
 	if err != nil {
 		return err
 	}
-	_, err = waitOperation(ctx, gceSvc,tenantProject, op)
+	_, err = waitOperation(ctx, gceSvc, tenantProject, op, wait)
 	return err
 }
 
-func waitOperation(ctx context.Context,gceSvc *compute.Service,tenantProject string, op *compute.Operation)(uint64,error) {
+func StartVMs(ctx context.Context, gceSvc *compute.Service, tenantProject, zone, vmName string, wait *time.Duration) error {
+	op, err := gceSvc.Instances.Start(tenantProject, zone, vmName).Context(ctx).Do()
+	if err != nil {
+		return err
+	}
+	_, err = waitOperation(ctx, gceSvc, tenantProject, op, wait)
+	return err
+}
+
+func waitOperation(ctx context.Context, gceSvc *compute.Service, tenantProject string, op *compute.Operation, wait *time.Duration) (uint64, error) {
 	name, zone, region := op.Name, op.Zone, op.Region
-	ctx, cancel := context.WithTimeout(ctx, *waitTime)
+	ctx, cancel := context.WithTimeout(ctx, *wait)
 	var err error
 	defer cancel()
 	for {
@@ -145,5 +112,3 @@ func waitOperation(ctx context.Context,gceSvc *compute.Service,tenantProject str
 		}
 	}
 }
-
-
