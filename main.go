@@ -4,7 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/kiranpitkar/GCP-lifecycle-Manager/vmmgr"
+	"github.com/kiranpitkar/GCPVMLifeCycleManager/vmmgr"
 	compute "google.golang.org/api/compute/v1"
 	"google.golang.org/api/googleapi"
 	option "google.golang.org/api/option"
