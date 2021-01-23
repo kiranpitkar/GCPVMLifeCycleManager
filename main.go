@@ -6,9 +6,7 @@ import (
 	"fmt"
 	"github.com/kiranpitkar/GCPVMLifeCycleManager/vmmgr"
 	compute "google.golang.org/api/compute/v1"
-	"google.golang.org/api/googleapi"
 	option "google.golang.org/api/option"
-	"path"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -37,7 +35,7 @@ func main(){
 	if *zone != "" {
 		clusterZones = append(clusterZones, *zone)
 	} else {
-		if clusterZones, err = listZones(ctx, computeService, *tenantProject, *region); err != nil {
+		if clusterZones, err = vmmgr.ListZones(ctx, computeService, *tenantProject, *region); err != nil {
 			log.Fatalf(fmt.Sprintln(err))
 		}
 	}
@@ -48,7 +46,7 @@ func main(){
 	}
 	fmt.Println(vms)
 	for _, vm := range vms {
-		if err = vmmgr.StopVMs(ctx, computeService, *tenantProject, *zone, vm.Name ); err != nil {
+		if err = vmmgr.StopVMs(ctx, computeService, *tenantProject, *zone, vm.Name, waitTime); err != nil {
 			log.Fatalf(fmt.Sprintln(err))
 		}
 	}
