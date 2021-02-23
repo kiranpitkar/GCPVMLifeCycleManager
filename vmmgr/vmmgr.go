@@ -112,3 +112,11 @@ func waitOperation(ctx context.Context, gceSvc *compute.Service, tenantProject s
 		}
 	}
 }
+
+func checkStatus(ctx context.Context, gceSvc *compute.Service, tenantProject, zone, vmName string)(*compute.Instance, error ){
+	resp, err := gceSvc.Instances.Get(tenantProject,zone,vmName).Context(ctx).Do()
+	if err != nil {
+		return nil, err
+	}
+	return resp, nil
+}

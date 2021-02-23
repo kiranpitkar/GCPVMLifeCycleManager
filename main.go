@@ -4,10 +4,14 @@ import (
 	"context"
 	"flag"
 	"fmt"
+
+	proto "github.com/golang/protobuf/proto"
 	"github.com/google/cloudprober/metrics"
 	"github.com/kiranpitkar/GCPVMLifeCycleManager/vmmgr"
+	"github.com/google/cloudprober/surfacers"
 	compute "google.golang.org/api/compute/v1"
 	option "google.golang.org/api/option"
+	surfacerpb "github.com/google/cloudprober/surfacers/proto"
 	"sync"
 	"time"
 
@@ -74,6 +78,15 @@ func main(){
 	}
 	fmt.Println(vms)
 	dataChan := make(chan *metrics.EventMetrics, 1000)
+	sDef := &surfacerpb.SurfacerDef{
+		Type: surfacerpb.Type_STACKDRIVER.Enum(),
+		Name: proto.String("GLM_Surfacer"),
+	}
+	sd := []*surfacerpb.SurfacerDef{sDef}
+	sfacers,err := surfacers.Init(ctx,sd)
+	if err != nil {
+		log.Fatalf("Unable to create surfacer %v",err)
+	}
 	go func() {
 		defer wg.Wait()
 		for {
@@ -86,6 +99,9 @@ func main(){
 	}()
 	for {
 		em := <-dataChan
+		for _, sd := range sfacers {
+			sd.Write(ctx,em)
+		}
 		fmt.Println(em.String())
 	}
 	/*
