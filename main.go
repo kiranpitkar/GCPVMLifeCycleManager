@@ -24,6 +24,8 @@ var (
 	region        = flag.String("region", "", "The enterprise instance region.")
 	waitTime      = flag.Duration("wait_time",5*time.Minute,"Wait time for the cloud operation")
 	sampleTime = flag.Duration("sample_time",1*time.Minute,"sample time to write to SD")
+	restartInterval =flag.Duration("wait_time",6*time.Hour,"Wait time for the cloud operation")
+	dryrun = flag.Bool("dry_run",true,"dry run the code")
 )
 
 type vm struct {
@@ -51,6 +53,28 @@ func newVM(name string, zone string,exp int64, got int64) (*vm) {
 		gotState: got,
 }
 }
+
+var (
+	status = map[string]int64{"RUNNING":10,"STOPPED":0,"STOPPING":1,"SUSPENDED":2,"SUSPENDING":3}
+)
+
+func updateVmStatus(ctx context.Context,c *compute.Service, tenantProject, zone, vmName string,dc chan *metrics.EventMetrics, expectOn int64){
+	var got int64
+	stat,err := vmmgr.CheckStatus(ctx,c,tenantProject, zone, vmName)
+	if err != nil {
+		return
+	}
+	st := stat.Status
+	if _,ok := status[st]; !ok {
+		got = 5
+	} else {
+		got = status[st]
+	}
+	vm := newVM(vmName, zone, expectOn,got)
+	createMetrics(time.Now(), vm, dc)
+
+}
+
 func main(){
 	ctx := context.Background()
 	flag.Parse()
@@ -87,12 +111,33 @@ func main(){
 	if err != nil {
 		log.Fatalf("Unable to create surfacer %v",err)
 	}
+	var startime = time.Now()
 	go func() {
 		defer wg.Wait()
 		for {
-			for _, v := range vms {
-				vm := newVM(v.Name, *zone, 1, 1)
-				createMetrics(time.Now(), vm, dataChan)
+			if time.Since(startime) > *restartInterval {
+				for _, v := range vms {
+					if !*dryrun {
+						if err = vmmgr.StopVMs(ctx, computeService, *tenantProject, *zone, v.Name, waitTime); err != nil {
+							log.Fatalf(fmt.Sprintln(err))
+						}
+					} else {
+						log.Infof("Dry run Stopping vm %v",v.Name)
+					}
+					updateVmStatus(ctx,computeService,*tenantProject,*zone,v.Name,dataChan,0)
+					time.Sleep(1*time.Minute)
+			}
+			for _, v := range vms{
+				if err = vmmgr.StartVMs(ctx, computeService, *tenantProject, *zone, v.Name, waitTime); err != nil {
+					log.Fatalf(fmt.Sprintln(err))
+				}
+				updateVmStatus(ctx,computeService,*tenantProject,*zone,v.Name,dataChan,1)
+			}
+			startime = time.Now()
+			} else {
+				for _,v := range vms {
+					updateVmStatus(ctx,computeService,*tenantProject,*zone,v.Name,dataChan,1)
+				}
 			}
 			time.Sleep(*sampleTime)
 		}
