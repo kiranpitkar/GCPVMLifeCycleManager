@@ -19,13 +19,13 @@ import (
 )
 var (
 	// Flags
-	tenantProject = flag.String("tenant_project", "", "The tenant project.")
-	zone          = flag.String("zone", "", "The instance zone.")
-	region        = flag.String("region", "", "The enterprise instance region.")
-	waitTime      = flag.Duration("wait_time",5*time.Minute,"Wait time for the cloud operation")
-	sampleTime = flag.Duration("sample_time",1*time.Minute,"sample time to write to SD")
-	restartInterval =flag.Duration("wait_time",6*time.Hour,"Wait time for the cloud operation")
-	dryrun = flag.Bool("dry_run",true,"dry run the code")
+	tenantProject   = flag.String("tenant_project", "", "The tenant project.")
+	zone            = flag.String("zone", "", "The instance zone.")
+	region          = flag.String("region", "", "The enterprise instance region.")
+	waitTime        = flag.Duration("wait_time",5*time.Minute,"Wait time for the cloud operation")
+	sampleTime      = flag.Duration("sample_time",1*time.Minute,"sample time to write to SD")
+	restartInterval =flag.Duration("restart_time",6*time.Hour,"Wait time for the cloud operation")
+	dryrun, json    = flag.Bool("dry_run", true, "dry run the code"), flag.String("json", "", "json path")
 )
 
 type vm struct {
@@ -83,7 +83,7 @@ func main(){
 	if *zone == "" && *region == "" {
 		log.Fatalf("Please specify a valid zone or region\n")
 	}
-	computeService, err := compute.NewService(ctx, option.WithScopes(compute.CloudPlatformScope))
+	computeService, err := compute.NewService(ctx, option.WithScopes(compute.CloudPlatformScope), option.WithCredentialsFile(*json))
 	if err != nil {
 		fmt.Printf("Error while getting service, err: %v\n", err)
 	}
@@ -112,11 +112,13 @@ func main(){
 		log.Fatalf("Unable to create surfacer %v",err)
 	}
 	var startime = time.Now()
+	log.Infof("restart interval is %v", *restartInterval)
 	go func() {
 		defer wg.Wait()
 		for {
 			if time.Since(startime) > *restartInterval {
 				for _, v := range vms {
+					log.Infof("Reboot initiating")
 					if !*dryrun {
 						if err = vmmgr.StopVMs(ctx, computeService, *tenantProject, *zone, v.Name, waitTime); err != nil {
 							log.Fatalf(fmt.Sprintln(err))
@@ -126,17 +128,18 @@ func main(){
 					}
 					updateVmStatus(ctx,computeService,*tenantProject,*zone,v.Name,dataChan,0)
 					time.Sleep(1*time.Minute)
+					log.Infof("Reboot completed")
 			}
 			for _, v := range vms{
 				if err = vmmgr.StartVMs(ctx, computeService, *tenantProject, *zone, v.Name, waitTime); err != nil {
 					log.Fatalf(fmt.Sprintln(err))
 				}
-				updateVmStatus(ctx,computeService,*tenantProject,*zone,v.Name,dataChan,1)
+				updateVmStatus(ctx,computeService,*tenantProject,*zone,v.Name,dataChan,10)
 			}
 			startime = time.Now()
 			} else {
 				for _,v := range vms {
-					updateVmStatus(ctx,computeService,*tenantProject,*zone,v.Name,dataChan,1)
+					updateVmStatus(ctx,computeService,*tenantProject,*zone,v.Name,dataChan,10)
 				}
 			}
 			time.Sleep(*sampleTime)
