@@ -46,7 +46,7 @@ func createMetrics(ts time.Time, vm *vm, dc chan *metrics.EventMetrics ){
 	dc <- em
 }
 
-func readFile(name string) ([]bytes,error) {
+func readFile(name string) ([]byte,error) {
 	out,err := ioutil.ReadFile(name)
 	if err != nil {
 		return out, err
@@ -87,15 +87,16 @@ func updateVmStatus(ctx context.Context,c *compute.Service, tenantProject, zone,
 func main(){
 	ctx := context.Background()
 	flag.Parse()
-	if err := readFile(*json);err != nil {
-		return log.Fatalf("Encountered error read file %v",err)
+	out,err := readFile(*json)
+	if err != nil {
+		log.Fatalf("Encountered error read file %v",err)
 	}
 	var wg sync.WaitGroup
 	// Print context logs to stdout.
 	if *zone == "" && *region == "" {
 		log.Fatalf("Please specify a valid zone or region\n")
 	}
-	computeService, err := compute.NewService(ctx, option.WithScopes(compute.CloudPlatformScope), option.WithCredentialsFile(*json))
+	computeService, err := compute.NewService(ctx, option.WithScopes(compute.CloudPlatformScope), option.WithCredentialsJSON(out))
 	if err != nil {
 		fmt.Printf("Error while getting service, err: %v\n", err)
 	}
