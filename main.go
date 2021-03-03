@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io/ioutil"
 
 	proto "github.com/golang/protobuf/proto"
 	"github.com/google/cloudprober/metrics"
@@ -45,6 +46,13 @@ func createMetrics(ts time.Time, vm *vm, dc chan *metrics.EventMetrics ){
 	dc <- em
 }
 
+func readFile(name string) error {
+	_,err := ioutil.ReadFile(name)
+	if err != nil {
+		return err
+	}
+}
+
 func newVM(name string, zone string,exp int64, got int64) (*vm) {
 	return &vm{
 		name: name,
@@ -78,6 +86,9 @@ func updateVmStatus(ctx context.Context,c *compute.Service, tenantProject, zone,
 func main(){
 	ctx := context.Background()
 	flag.Parse()
+	if err := readFile(*json);err != nil {
+		return log.Fatalf("Encountered error read file %v",err)
+	}
 	var wg sync.WaitGroup
 	// Print context logs to stdout.
 	if *zone == "" && *region == "" {
