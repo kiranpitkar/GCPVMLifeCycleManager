@@ -46,11 +46,12 @@ func createMetrics(ts time.Time, vm *vm, dc chan *metrics.EventMetrics ){
 	dc <- em
 }
 
-func readFile(name string) error {
-	_,err := ioutil.ReadFile(name)
+func readFile(name string) ([]bytes,error) {
+	out,err := ioutil.ReadFile(name)
 	if err != nil {
-		return err
+		return out, err
 	}
+	return out,nil
 }
 
 func newVM(name string, zone string,exp int64, got int64) (*vm) {
