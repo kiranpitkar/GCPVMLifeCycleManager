@@ -4,9 +4,10 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"io/ioutil"
+	ioutil "io/ioutil"
 
 	proto "github.com/golang/protobuf/proto"
+	google "golang.org/x/oauth2/google"
 	"github.com/google/cloudprober/metrics"
 	"github.com/kiranpitkar/GCPVMLifeCycleManager/vmmgr"
 	"github.com/google/cloudprober/surfacers"
@@ -91,12 +92,17 @@ func main(){
 	if err != nil {
 		log.Fatalf("Encountered error read file %v",err)
 	}
+	jwtConfig,err := google.JWTConfigFromJSON(out, compute.CloudPlatformScope)
+	if err != nil {
+		log.Fatalf("Unable to generate tokens from json file")
+	}
+	ts := jwtConfig.TokenSource(ctx)
 	var wg sync.WaitGroup
 	// Print context logs to stdout.
 	if *zone == "" && *region == "" {
 		log.Fatalf("Please specify a valid zone or region\n")
 	}
-	computeService, err := compute.NewService(ctx, option.WithScopes(compute.CloudPlatformScope), option.WithCredentialsJSON(out))
+	computeService, err := compute.NewService(ctx, option.WithScopes(compute.CloudPlatformScope), option.WithTokenSource(ts))
 	if err != nil {
 		fmt.Printf("Error while getting service, err: %v\n", err)
 	}
