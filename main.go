@@ -28,7 +28,8 @@ var (
 	sampleTime      = flag.Duration("sample_time",1*time.Minute,"sample time to write to SD")
 	restartInterval =flag.Duration("restart_time",6*time.Hour,"Wait time for the cloud operation")
 	dryrun, json    = flag.Bool("dry_run", true, "dry run the code"), flag.String("json", "", "json path")
-)
+    token = flag.Bool("token",false,"token based auth")
+	)
 
 type vm struct {
 	name string
@@ -88,24 +89,35 @@ func updateVmStatus(ctx context.Context,c *compute.Service, tenantProject, zone,
 func main(){
 	ctx := context.Background()
 	flag.Parse()
-	out,err := readFile(*json)
-	if err != nil {
-		log.Fatalf("Encountered error read file %v",err)
+	var computeService *compute.Service
+	var err error
+	if *token {
+		out, err := readFile(*json)
+		if err != nil {
+			log.Fatalf("Encountered error read file %v", err)
+		}
+		jwtConfig, err := google.JWTConfigFromJSON(out, compute.CloudPlatformScope)
+		if err != nil {
+			log.Fatalf("Unable to generate tokens from json file")
+		}
+		ts := jwtConfig.TokenSource(ctx)
+		computeService, err = compute.NewService(ctx, option.WithScopes(compute.CloudPlatformScope), option.WithTokenSource(ts))
+		if err != nil {
+			fmt.Printf("Error while getting service, err: %v\n", err)
+		}
+	} else {
+		computeService, err = compute.NewService(ctx, option.WithScopes(compute.CloudPlatformScope))
+		if err != nil {
+			fmt.Printf("Error while getting service, err: %v\n", err)
+		}
 	}
-	jwtConfig,err := google.JWTConfigFromJSON(out, compute.CloudPlatformScope)
-	if err != nil {
-		log.Fatalf("Unable to generate tokens from json file")
-	}
-	ts := jwtConfig.TokenSource(ctx)
+
 	var wg sync.WaitGroup
 	// Print context logs to stdout.
 	if *zone == "" && *region == "" {
 		log.Fatalf("Please specify a valid zone or region\n")
 	}
-	computeService, err := compute.NewService(ctx, option.WithScopes(compute.CloudPlatformScope), option.WithTokenSource(ts))
-	if err != nil {
-		fmt.Printf("Error while getting service, err: %v\n", err)
-	}
+
 	clusterZones := []string{}
 	if *zone != "" {
 		clusterZones = append(clusterZones, *zone)
