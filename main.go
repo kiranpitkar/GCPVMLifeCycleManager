@@ -106,7 +106,12 @@ func main(){
 			fmt.Printf("Error while getting service, err: %v\n", err)
 		}
 	} else {
-		computeService, err = compute.NewService(ctx, option.WithScopes(compute.CloudPlatformScope))
+		cred, err := google.FindDefaultCredentials(ctx, compute.CloudPlatformScope)
+		if err != nil {
+			log.Fatalf("Unable to find default credentials")
+		}
+		ts := cred.TokenSource
+		computeService, err = compute.NewService(ctx, option.WithScopes(compute.CloudPlatformScope), option.WithTokenSource(ts))
 		if err != nil {
 			fmt.Printf("Error while getting service, err: %v\n", err)
 		}
