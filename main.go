@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	ioutil "io/ioutil"
+	"math/rand"
 
 	proto "github.com/golang/protobuf/proto"
 	google "golang.org/x/oauth2/google"
@@ -86,43 +87,74 @@ func updateVmStatus(ctx context.Context,c *compute.Service, tenantProject, zone,
 
 }
 
-func main(){
-	ctx := context.Background()
-	flag.Parse()
+func createClient(ctx context.Context,token bool,json string)(*compute.Service,error){
 	var computeService *compute.Service
 	var err error
-	if *token {
-		out, err := readFile(*json)
+	if token {
+		out, err := readFile(json)
 		if err != nil {
-			log.Fatalf("Encountered error read file %v", err)
+			return nil,fmt.Errorf("Encountered error read file %v", err)
 		}
 		jwtConfig, err := google.JWTConfigFromJSON(out, compute.CloudPlatformScope)
 		if err != nil {
-			log.Fatalf("Unable to generate tokens from json file")
+			return nil,fmt.Errorf("Unable to generate tokens from json file")
 		}
 		ts := jwtConfig.TokenSource(ctx)
 		computeService, err = compute.NewService(ctx, option.WithScopes(compute.CloudPlatformScope), option.WithTokenSource(ts))
 		if err != nil {
-			fmt.Printf("Error while getting service, err: %v\n", err)
+			return nil,fmt.Errorf("Error while getting service, err: %v\n", err)
 		}
 	} else {
 		cred, err := google.FindDefaultCredentials(ctx, compute.CloudPlatformScope)
 		if err != nil {
-			log.Fatalf("Unable to find default credentials")
+			return nil,fmt.Errorf("Unable to find default credentials")
 		}
-		ts := cred.TokenSource
-		computeService, err = compute.NewService(ctx, option.WithScopes(compute.CloudPlatformScope), option.WithTokenSource(ts))
+		computeService, err = compute.NewService(ctx, option.WithTokenSource(cred.TokenSource))
 		if err != nil {
-			fmt.Printf("Error while getting service, err: %v\n", err)
+			return nil,fmt.Errorf("Error while getting service, err: %v\n", err)
 		}
 	}
+	return computeService,err
+}
 
+func retry(attempts int, sleep time.Duration, f func() error) error {
+	if err := f(); err != nil {
+		if s, ok := err.(stop); ok {
+			// Return the original error for later checking
+			return s.error
+		}
+
+		if attempts--; attempts > 0 {
+			// Add some randomness to prevent creating a Thundering Herd
+			jitter := time.Duration(rand.Int63n(int64(sleep)))
+			sleep = sleep + jitter/2
+
+			time.Sleep(sleep)
+			return retry(attempts, 2*sleep, f)
+		}
+		return err
+	}
+
+	return nil
+}
+
+type stop struct {
+	error
+}
+
+func main(){
+	ctx := context.Background()
+	flag.Parse()
+	var err error
+    computeService, err := createClient(ctx,*token,*json)
+    if err != nil {
+    	log.Fatalf("unable to create client %v",err)
+	}
 	var wg sync.WaitGroup
 	// Print context logs to stdout.
 	if *zone == "" && *region == "" {
 		log.Fatalf("Please specify a valid zone or region\n")
 	}
-
 	clusterZones := []string{}
 	if *zone != "" {
 		clusterZones = append(clusterZones, *zone)
@@ -156,8 +188,19 @@ func main(){
 				for _, v := range vms {
 					log.Infof("Reboot initiating")
 					if !*dryrun {
-						if err = vmmgr.StopVMs(ctx, computeService, *tenantProject, *zone, v.Name, waitTime); err != nil {
-							log.Fatalf(fmt.Sprintln(err))
+						err = retry(2, 1*time.Minute, func() error {
+							if err = vmmgr.StopVMs(ctx, computeService, *tenantProject, *zone, v.Name, waitTime); err != nil {
+								log.Infof(fmt.Sprintln(err))
+								computeService, err = createClient(ctx, *token, *json)
+								if err != nil {
+									return err
+								}
+								return err
+							}
+							return nil
+						})
+						if err != nil {
+							log.Fatalf("Unable to stop vms", err)
 						}
 					} else {
 						log.Infof("Dry run Stopping vm %v",v.Name)
@@ -168,7 +211,7 @@ func main(){
 			}
 			for _, v := range vms{
 				if err = vmmgr.StartVMs(ctx, computeService, *tenantProject, *zone, v.Name, waitTime); err != nil {
-					log.Fatalf(fmt.Sprintln(err))
+					log.Infof(fmt.Sprintln(err))
 				}
 				updateVmStatus(ctx,computeService,*tenantProject,*zone,v.Name,dataChan,10)
 			}
