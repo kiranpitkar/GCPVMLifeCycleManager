@@ -109,7 +109,7 @@ func createClient(ctx context.Context,token bool,json string)(*compute.Service,e
 		if err != nil {
 			return nil,fmt.Errorf("Unable to find default credentials")
 		}
-		computeService, err = compute.NewService(ctx, option.WithTokenSource(cred.TokenSource))
+		computeService, err = compute.NewService(ctx, option.WithCredentials(cred))
 		if err != nil {
 			return nil,fmt.Errorf("Error while getting service, err: %v\n", err)
 		}
