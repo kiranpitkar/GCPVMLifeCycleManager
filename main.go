@@ -30,6 +30,7 @@ var (
 	restartInterval =flag.Duration("restart_time",6*time.Hour,"Wait time for the cloud operation")
 	dryrun, json    = flag.Bool("dry_run", true, "dry run the code"), flag.String("json", "", "json path")
     token = flag.Bool("token",false,"token based auth")
+    buffer = flag.Duration("buffer",16*time.Minute,"Time between restart and VM jobs coming up")
 	)
 
 type vm struct {
@@ -41,10 +42,11 @@ type vm struct {
 
 func createMetrics(ts time.Time, vm *vm, dc chan *metrics.EventMetrics ){
   em := metrics.NewEventMetrics(ts).
-	  AddMetric("expectedstate", metrics.NewInt(vm.expectState)).
-	  AddMetric("actualstate", metrics.NewInt(vm.gotState)).
+	  AddMetric("expectedstate_gauge", metrics.NewInt(vm.expectState)).
+	  AddMetric("actualstate_gauge", metrics.NewInt(vm.gotState)).
 	  AddLabel("vmname", vm.name).
 	  AddLabel("zone",vm.zone)
+	  em.Kind := metrics.Gauge
     log.Infof(em.String())
 	dc <- em
 }
@@ -213,9 +215,14 @@ func main(){
 				if err = vmmgr.StartVMs(ctx, computeService, *tenantProject, *zone, v.Name, waitTime); err != nil {
 					log.Infof(fmt.Sprintln(err))
 				}
-				updateVmStatus(ctx,computeService,*tenantProject,*zone,v.Name,dataChan,10)
+				updateVmStatus(ctx,computeService,*tenantProject,*zone,v.Name,dataChan,0)
 			}
 			startime = time.Now()
+			// Add buffer time
+			if time.Since(startime) < 16*time.Minute {
+				updateVmStatus(ctx,computeService,*tenantProject,*zone,v.Name,dataChan,0)
+				time.Sleep(1*time.Minute)
+			}
 			} else {
 				for _,v := range vms {
 					updateVmStatus(ctx,computeService,*tenantProject,*zone,v.Name,dataChan,10)
