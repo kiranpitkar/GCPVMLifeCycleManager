@@ -46,7 +46,7 @@ func createMetrics(ts time.Time, vm *vm, dc chan *metrics.EventMetrics ){
 	  AddMetric("actualstate_gauge", metrics.NewInt(vm.gotState)).
 	  AddLabel("vmname", vm.name).
 	  AddLabel("zone",vm.zone)
-	  em.Kind := metrics.Gauge
+	  em.Kind := metrics.GAUGE
     log.Infof(em.String())
 	dc <- em
 }
