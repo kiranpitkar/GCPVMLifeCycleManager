@@ -46,7 +46,7 @@ func createMetrics(ts time.Time, vm *vm, dc chan *metrics.EventMetrics ){
 	  AddMetric("actualstate_gauge", metrics.NewInt(vm.gotState)).
 	  AddLabel("vmname", vm.name).
 	  AddLabel("zone",vm.zone)
-	  em.Kind := metrics.GAUGE
+	  em.Kind = metrics.GAUGE
     log.Infof(em.String())
 	dc <- em
 }
@@ -220,7 +220,9 @@ func main(){
 			startime = time.Now()
 			// Add buffer time
 			if time.Since(startime) < 16*time.Minute {
-				updateVmStatus(ctx,computeService,*tenantProject,*zone,v.Name,dataChan,0)
+				for _, v := range vms {
+					updateVmStatus(ctx, computeService, *tenantProject, *zone, v.Name, dataChan, 0)
+				}
 				time.Sleep(1*time.Minute)
 			}
 			} else {
