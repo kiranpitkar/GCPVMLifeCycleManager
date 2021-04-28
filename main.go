@@ -6,6 +6,7 @@ import (
 	"fmt"
 	ioutil "io/ioutil"
 	"math/rand"
+	"strings"
 
 	proto "github.com/golang/protobuf/proto"
 	google "golang.org/x/oauth2/google"
@@ -159,6 +160,12 @@ func main(){
 	}
 	clusterZones := []string{}
 	if *zone != "" {
+		if strings.Contains(*zone,",") {
+			s := strings.Split(*zone,",")
+			for _,st := range s{
+				clusterZones = append(clusterZones, st)
+			}
+		}
 		clusterZones = append(clusterZones, *zone)
 	} else {
 		if clusterZones, err = vmmgr.ListZones(ctx, computeService, *tenantProject, *region); err != nil {
@@ -166,9 +173,15 @@ func main(){
 		}
 	}
 	fmt.Printf("zones are %v", clusterZones)
-	vms, err := vmmgr.ListVMs(ctx,computeService,*tenantProject,*zone)
-	if err != nil {
-		log.Fatalf(fmt.Sprintln(err))
+	var vms []*compute.Instance
+	for _,z := range clusterZones {
+		vs, err := vmmgr.ListVMs(ctx, computeService, *tenantProject, z)
+		if err != nil {
+			log.Fatalf(fmt.Sprintln(err))
+		}
+		for _, v := range vs {
+			vms = append(vms, v)
+		}
 	}
 	fmt.Println(vms)
 	dataChan := make(chan *metrics.EventMetrics, 1000)
