@@ -21,6 +21,7 @@ import (
 
 	log "github.com/sirupsen/logrus"
 )
+
 var (
 	// Flags
 	tenantProject   = flag.String("tenant_project", "", "The tenant project.")
@@ -32,6 +33,7 @@ var (
 	dryrun, json    = flag.Bool("dry_run", true, "dry run the code"), flag.String("json", "", "json path")
     token = flag.Bool("token",false,"token based auth")
     buffer = flag.Duration("buffer",16*time.Minute,"Time between restart and VM jobs coming up")
+    vmname = flag.String("vmname","","name of the vm")
 	)
 
 type vm struct {
@@ -180,7 +182,9 @@ func main(){
 			log.Fatalf(fmt.Sprintln(err))
 		}
 		for _, v := range vs {
-			vms = append(vms, v)
+			if strings.Contains(v.Name,*vmname){
+				vms = append(vms, v)
+			}
 		}
 	}
 	fmt.Println(vms)
@@ -204,7 +208,7 @@ func main(){
 					log.Infof("Reboot initiating")
 					if !*dryrun {
 						err = retry(2, 1*time.Minute, func() error {
-							if err = vmmgr.StopVMs(ctx, computeService, *tenantProject, *zone, v.Name, waitTime); err != nil {
+							if err = vmmgr.StopVMs(ctx, computeService, *tenantProject, v.Zone, v.Name, waitTime); err != nil {
 								log.Infof(fmt.Sprintln(err))
 								computeService, err = createClient(ctx, *token, *json)
 								if err != nil {
@@ -220,27 +224,27 @@ func main(){
 					} else {
 						log.Infof("Dry run Stopping vm %v",v.Name)
 					}
-					updateVmStatus(ctx,computeService,*tenantProject,*zone,v.Name,dataChan,0)
+					updateVmStatus(ctx,computeService,*tenantProject,v.Zone,v.Name,dataChan,0)
 					time.Sleep(1*time.Minute)
 					log.Infof("Reboot completed")
 			}
 			for _, v := range vms{
-				if err = vmmgr.StartVMs(ctx, computeService, *tenantProject, *zone, v.Name, waitTime); err != nil {
+				if err = vmmgr.StartVMs(ctx, computeService, *tenantProject, v.Zone, v.Name, waitTime); err != nil {
 					log.Infof(fmt.Sprintln(err))
 				}
-				updateVmStatus(ctx,computeService,*tenantProject,*zone,v.Name,dataChan,0)
+				updateVmStatus(ctx,computeService,*tenantProject,v.Zone,v.Name,dataChan,0)
 			}
 			startime = time.Now()
 			// Add buffer time
 			if time.Since(startime) < 16*time.Minute {
 				for _, v := range vms {
-					updateVmStatus(ctx, computeService, *tenantProject, *zone, v.Name, dataChan, 0)
+					updateVmStatus(ctx, computeService, *tenantProject, v.Zone, v.Name, dataChan, 0)
 				}
 				time.Sleep(1*time.Minute)
 			}
 			} else {
 				for _,v := range vms {
-					updateVmStatus(ctx,computeService,*tenantProject,*zone,v.Name,dataChan,10)
+					updateVmStatus(ctx,computeService,*tenantProject,v.Zone,v.Name,dataChan,10)
 				}
 			}
 			time.Sleep(*sampleTime)
