@@ -167,8 +167,9 @@ func main(){
 			for _,st := range s{
 				clusterZones = append(clusterZones, st)
 			}
+		} else {
+			clusterZones = append(clusterZones, *zone)
 		}
-		clusterZones = append(clusterZones, *zone)
 	} else {
 		if clusterZones, err = vmmgr.ListZones(ctx, computeService, *tenantProject, *region); err != nil {
 			log.Fatalf(fmt.Sprintln(err))
